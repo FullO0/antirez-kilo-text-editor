@@ -19,17 +19,21 @@
 #include <errno.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <string.h>
 #include <sys/ioctl.h>
 #include <termios.h>
 #include <unistd.h>
 
 /*** defines ***/
 
+#define KILO_VERSION "0.0.1"
+
 #define CTRL_KEY(key) ((key) & 0x1f)
 
 /*** data ***/
 
 struct editorConfig {
+	int cx, cy;
 	int screenrows;
 	int screencols;
 	struct termios orig_termios;
@@ -117,7 +121,49 @@ int getWindowSize(int *rows, int *cols)
 	}
 }
 
+/*** append buffer ***/
+
+struct abuf {
+	char *b;
+	int len;
+};
+
+#define ABUF_INIT {NULL, 0}
+
+void abAppend(struct abuf *ab, const char *s, int len)
+{
+	char *new;
+
+	if ((new = realloc(ab->b, ab->len + len)) == NULL) die("realloc");
+	memcpy(&new[ab->len], s, len);
+	ab->b = new;
+	ab->len += len;
+}
+
+void abFree(struct abuf *ab)
+{
+	free(ab->b);
+}
+
 /*** input ***/
+
+void editorMoveCursor(char key)
+{
+	switch (key) {
+		case 'a':
+			E.cx--;
+			break;
+		case 's':
+			E.cy++;
+			break;
+		case 'd':
+			E.cx++;
+			break;
+		case 'w':
+			E.cy--;
+			break;
+	}
+}
 
 void editorProcessKeypress()
 {
@@ -129,43 +175,86 @@ void editorProcessKeypress()
 			write(STDOUT_FILENO, "\x1b[H", 3); /* resetes cursor position */
 			exit(0);
 			break;
+		
+		case 'a':
+		case 'd':
+		case 'w':
+		case 's':
+			editorMoveCursor(c);
+			break;
 	}
 }
 
 /*** output ***/
 
-void editorDrawRows()
+void editorDrawRows(struct abuf *ab)
 {
-	int y;
+	int y, welcome_len, padding;
+	char welcome[80];
 	for (y = 0; y < E.screenrows; y++) {
+		if (y == E.screenrows / 3) {
 
-		/* draws | on the left side of the terminal */
-		if (y != E.screenrows - 1) {
-			write(STDOUT_FILENO, "|\r\n", 3);
+			/* append the welcome message into a welcome buffer */
+			welcome_len = snprintf(welcome, sizeof(welcome),
+						"Kilo editor -- version %s", KILO_VERSION);
+
+			/* if there are'nt enough columns to display the welcome message */
+			if (welcome_len > E.screencols) welcome_len = E.screencols;
+
+			/* Center the welcome message */
+			padding = (E.screencols - welcome_len) / 2;
+			if (padding) {
+				abAppend(ab, "|", 1);
+				padding--;
+			}
+			while (padding--) abAppend(ab, " ", 1);
+
+			/* add the welcome message into the main buffer */
+			abAppend(ab, welcome, welcome_len);
 		} else {
-			write(STDOUT_FILENO, "|", 1);
+			abAppend(ab, "|", 1);
+		}
+
+		/* erase everything to the right of the cursor */
+		abAppend(ab, "\x1b[K", 3);
+
+		if (y < E.screenrows - 1) {
+			abAppend(ab, "\r\n", 2);
 		}
 	}
 }
 
 void editorRefreshScreen()
 {
-	/* clear the entire screen of the terminal */
-	write(STDOUT_FILENO, "\x1b[2J", 4);
+	struct abuf ab = ABUF_INIT;
+
+	/* Hides the cursor */
+	abAppend(&ab, "\x1b[?25l", 6);
 
 	/* Reposition the cursor to the top left part of the screen */
-	write(STDOUT_FILENO, "\x1b[H", 3);
+	abAppend(&ab, "\x1b[H", 3);
 
-	editorDrawRows();
+	editorDrawRows(&ab);
 
-	/* after drawing the rows resets cursor position*/
-	write(STDOUT_FILENO, "\x1b[H", 3);
+	/* moves the cursor to wherever E.cy (rows) and E.cx (cols) is */
+	char buf[32];
+	unsigned int buf_len = snprintf(buf, sizeof(buf), "\x1b[%d;%dH", E.cy + 1, E.cx + 1);
+	if (buf_len >= sizeof(buf)) buf_len = sizeof(buf) - 1;
+	abAppend(&ab, buf, buf_len);
+
+	/* unhides the cursor */
+	abAppend(&ab, "\x1b[?25h", 6);
+
+	write(STDOUT_FILENO, ab.b, ab.len);
+	abFree(&ab);
 }
 
 /*** init ***/
 
 void initEditor()
 {
+	E.cx = 0;
+	E.cy = 0;
 	if (getWindowSize(&E.screenrows, &E.screencols) == -1) die("getWindowSize");
 }
 
