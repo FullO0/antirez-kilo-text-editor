@@ -17,18 +17,27 @@
 #include <asm-generic/ioctls.h>
 #include <ctype.h>
 #include <errno.h>
+#include <fcntl.h>
+#include <stdarg.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
 #include <sys/ioctl.h>
+#include <sys/stat.h>
 #include <termios.h>
 #include <unistd.h>
 
 /*** defines ***/
 
-#define KILO_VERSION "0.0.1"
+#define KILO_VERSION "0.0.46"
+#define LOG_FILE_PATH "/home/christian/kilo.log" /* TODO: make this Dynamic */
+#define MAX_MSG_LEN 512
 
 #define CTRL_KEY(key) ((key) & 0x1f)
+
+/*** global variables ***/
+
+int logfd; /* file descriptor for the log file */
 
 /*** data ***/
 
@@ -40,6 +49,11 @@ struct editorConfig {
 };
 
 struct editorConfig E;
+
+/*** function prototypes ***/
+
+void logm(const char *format, ...);
+void closeLogFile();
 
 /*** terminal ***/
 
@@ -81,7 +95,28 @@ char editorReadKey()
 	while ((nread = read(STDIN_FILENO, &c, 1)) != 1) {
 		if (nread == -1 && errno != EAGAIN) die("read");
 	}
-	return c;
+
+	if (c == '\xb1') {
+		char seq[3];
+
+		if (read(STDIN_FILENO, &seq[0], 1) != 1) return '\xb1';
+		if (read(STDIN_FILENO, &seq[1], 1) != 1) return '\xb1';
+
+		if (seq[0] == '[') {
+
+			/* If escape sequence is one of the arrow keys */
+			switch (seq[1]) {
+				case 'A': return 'w';
+				case 'B': return 's';
+				case 'C': return 'd';
+				case 'D': return 'a';
+			}
+		}
+
+		return '\xb1';
+	} else {
+		return c;
+	}
 }
 
 int getCursorPosition(int *rows, int *cols)
@@ -173,6 +208,8 @@ void editorProcessKeypress()
 		case CTRL_KEY('q'):
 			write(STDOUT_FILENO, "\x1b[2J", 4); /* clears screen */
 			write(STDOUT_FILENO, "\x1b[H", 3); /* resetes cursor position */
+
+			closeLogFile();
 			exit(0);
 			break;
 		
@@ -248,9 +285,49 @@ void editorRefreshScreen()
 	write(STDOUT_FILENO, ab.b, ab.len);
 	abFree(&ab);
 }
+/*** logging ***/
+void initLogFile()
+{
+	logfd = open(LOG_FILE_PATH,
+				O_CREAT | O_WRONLY | O_APPEND,
+				S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
+	if (logfd == -1) die("Open Log file");
+	logm("--- Opening Kilo %s Session ---\n", KILO_VERSION);
+}
+
+void logm(const char *format, ...)
+{
+	if (logfd == -1) return;
+
+	char buf[MAX_MSG_LEN];
+	va_list args;
+	int len;
+
+	/* append msg together with variable arguments */
+	va_start(args, format);
+	len = vsnprintf(buf, MAX_MSG_LEN, format, args);
+	va_end(args);
+
+	/* appending errors */
+	if (len < 0) die("Logging write error");
+	if (len >= MAX_MSG_LEN) len = MAX_MSG_LEN - 1;
+
+	int bytes_written;
+	bytes_written = write(logfd, buf, len);
+
+	/* Writing to file errors */
+	if (bytes_written == -1) die("Write to Log file");
+	if (bytes_written < len) die("Write to Log file, Not enough space");
+}
+
+void closeLogFile()
+{
+	if (logfd == -1) return;
+	logm("--- Closing Kilo %s Session ---\n", KILO_VERSION);
+	if (close(logfd) == -1) die("Close Log file");
+}
 
 /*** init ***/
-
 void initEditor()
 {
 	E.cx = 0;
@@ -260,6 +337,7 @@ void initEditor()
 
 int main()
 {
+	initLogFile();
 	enableRawMode();
 	initEditor();
 
@@ -268,5 +346,6 @@ int main()
 		editorProcessKeypress();
 	}
 
+	closeLogFile();
 	return EXIT_SUCCESS;
 }
