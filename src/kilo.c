@@ -35,7 +35,7 @@ void closeLogFile();
 
 /*** defines ***/
 
-#define KILO_VERSION "0.0.49"
+#define KILO_VERSION "0.3.50"
 #define LOG_FILE_PATH "/home/christian/kilo.log" /* TODO: make this Dynamic */
 #define MAX_MSG_LEN 512
 
@@ -50,7 +50,9 @@ enum editorKey {
 	ARROW_LEFT = 1000,
 	ARROW_RIGHT,
 	ARROW_UP,
-	ARROW_DOWN
+	ARROW_DOWN,
+	PAGE_UP,
+	PAGE_DOWN
 };
 
 /*** global variables ***/
@@ -116,17 +118,31 @@ int editorReadKey()
 
 		if (read(STDIN_FILENO, &seq[0], 1) != 1) return '\xb1';
 		if (read(STDIN_FILENO, &seq[1], 1) != 1) return '\xb1';
-		LOG_DEBUG("Read Escape Code: \\x1b %c (%x), %c (%x), %c (%x)",
-				  seq[0], seq[0], seq[1], seq[1], seq[2], seq[2]);
 
 		if (seq[0] == '[') {
+			if (seq[1] >= '0' && seq[1] <= '9') {
+				if (read(STDIN_FILENO, &seq[2], 1) != 1) return '\xb1';
 
-			/* If escape sequence is one of the arrow keys */
-			switch (seq[1]) {
-				case 'A': return ARROW_UP;
-				case 'B': return ARROW_DOWN;
-				case 'C': return ARROW_RIGHT;
-				case 'D': return ARROW_LEFT;
+				/* if escape sequence is page up/down */
+				if (seq[2] == '~') {
+					LOG_DEBUG("Read Escape Code: \\x1b %c (%x), %c (%x), %c (%x)",
+							  seq[0], seq[0], seq[1], seq[1], seq[2], seq[2]);
+					switch (seq[1]) {
+						case '5': return PAGE_UP;
+						case '6': return PAGE_DOWN;
+					}
+				}
+			} else {
+
+				/* If escape sequence is one of the arrow keys */
+				LOG_DEBUG("Read Escape Code: \\x1b %c (%x), %c (%x), %c (%x)",
+						  seq[0], seq[0], seq[1], seq[1], seq[2], seq[2]);
+				switch (seq[1]) {
+					case 'A': return ARROW_UP;
+					case 'B': return ARROW_DOWN;
+					case 'C': return ARROW_RIGHT;
+					case 'D': return ARROW_LEFT;
+				}
 			}
 		}
 
