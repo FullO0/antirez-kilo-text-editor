@@ -35,7 +35,7 @@ void closeLogFile();
 
 /*** defines ***/
 
-#define KILO_VERSION "0.0.48"
+#define KILO_VERSION "0.0.49"
 #define LOG_FILE_PATH "/home/christian/kilo.log" /* TODO: make this Dynamic */
 #define MAX_MSG_LEN 512
 
@@ -204,18 +204,27 @@ void editorMoveCursor(int key)
 {
 	switch (key) {
 		case ARROW_LEFT:
-			E.cx--;
-			break;
-		case ARROW_DOWN:
-			E.cy++;
+			if (E.cx > 0) {
+				E.cx--;
+			}
 			break;
 		case ARROW_RIGHT:
-			E.cx++;
+			if (E.cx < E.screencols - 1) {
+				E.cx++;
+			}
 			break;
 		case ARROW_UP:
-			E.cy--;
+			if (E.cy > 0) {
+				E.cy--;
+			}
+			break;
+		case ARROW_DOWN:
+			if (E.cy < E.screenrows - 1) {
+				E.cy++;
+			}
 			break;
 	}
+	LOG_DEBUG("Moved Cursor to (%d, %d)", E.cx, E.cy);
 }
 
 void editorProcessKeypress()
