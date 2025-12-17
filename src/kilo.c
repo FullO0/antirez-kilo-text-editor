@@ -35,7 +35,7 @@ void closeLogFile();
 
 /*** defines ***/
 
-#define KILO_VERSION "0.0.46"
+#define KILO_VERSION "0.0.47"
 #define LOG_FILE_PATH "/home/christian/kilo.log" /* TODO: make this Dynamic */
 #define MAX_MSG_LEN 512
 
@@ -104,11 +104,13 @@ char editorReadKey()
 		if (nread == -1 && errno != EAGAIN) die("read");
 	}
 
-	if (c == '\xb1') {
+	if (c == '\x1b') {
 		char seq[3];
 
 		if (read(STDIN_FILENO, &seq[0], 1) != 1) return '\xb1';
 		if (read(STDIN_FILENO, &seq[1], 1) != 1) return '\xb1';
+		LOG_DEBUG("Read Escape Code: \\x1b %c (%x), %c (%x), %c (%x)",
+				  seq[0], seq[0], seq[1], seq[1], seq[2], seq[2]);
 
 		if (seq[0] == '[') {
 
@@ -123,6 +125,7 @@ char editorReadKey()
 
 		return '\xb1';
 	} else {
+		LOG_DEBUG("Read Keypress: %c [Hex 0x%02x]", c, (unsigned char) c);
 		return c;
 	}
 }
