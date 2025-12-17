@@ -25,13 +25,24 @@
 #include <sys/ioctl.h>
 #include <sys/stat.h>
 #include <termios.h>
+#include <time.h>
 #include <unistd.h>
+
+/*** function prototypes ***/
+
+void logm(const char *level, const char *func, int line, const char *format, ...);
+void closeLogFile();
 
 /*** defines ***/
 
 #define KILO_VERSION "0.0.46"
 #define LOG_FILE_PATH "/home/christian/kilo.log" /* TODO: make this Dynamic */
 #define MAX_MSG_LEN 512
+
+#define LOG_INFO(...) logm("INFO", __func__, __LINE__, __VA_ARGS__)
+#define LOG_DEBUG(...) logm("DEBUG", __func__, __LINE__, __VA_ARGS__)
+#define LOG_WARN(...) logm("WARN", __func__, __LINE__, __VA_ARGS__)
+#define LOG_ERROR(...) logm("ERROR", __func__, __LINE__, __VA_ARGS__)
 
 #define CTRL_KEY(key) ((key) & 0x1f)
 
@@ -49,11 +60,6 @@ struct editorConfig {
 };
 
 struct editorConfig E;
-
-/*** function prototypes ***/
-
-void logm(const char *format, ...);
-void closeLogFile();
 
 /*** terminal ***/
 
@@ -74,6 +80,7 @@ void disableRawMode()
 
 void enableRawMode()
 {
+	LOG_INFO("Enabling terminal raw mode...");
 	if (tcgetattr(STDIN_FILENO, &E.orig_termios) == -1) die("tcgetattr");
 	atexit(disableRawMode);
 
@@ -86,6 +93,7 @@ void enableRawMode()
 	raw.c_cc[VTIME] = 1;
 
 	if (tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw) == -1) die("tcsetattr");
+	LOG_INFO("Enabled terminal raw mode.");
 }
 
 char editorReadKey()
@@ -286,45 +294,67 @@ void editorRefreshScreen()
 	abFree(&ab);
 }
 /*** logging ***/
+
 void initLogFile()
 {
 	logfd = open(LOG_FILE_PATH,
-				O_CREAT | O_WRONLY | O_APPEND,
+				O_CREAT | O_WRONLY | O_TRUNC,
 				S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
-	if (logfd == -1) die("Open Log file");
-	logm("--- Opening Kilo %s Session ---\n", KILO_VERSION);
-}
-
-void logm(const char *format, ...)
-{
-	if (logfd == -1) return;
-
-	char buf[MAX_MSG_LEN];
-	va_list args;
-	int len;
-
-	/* append msg together with variable arguments */
-	va_start(args, format);
-	len = vsnprintf(buf, MAX_MSG_LEN, format, args);
-	va_end(args);
-
-	/* appending errors */
-	if (len < 0) die("Logging write error");
-	if (len >= MAX_MSG_LEN) len = MAX_MSG_LEN - 1;
-
-	int bytes_written;
-	bytes_written = write(logfd, buf, len);
-
-	/* Writing to file errors */
-	if (bytes_written == -1) die("Write to Log file");
-	if (bytes_written < len) die("Write to Log file, Not enough space");
+	if (logfd == -1) die("Open Log file error");
+	LOG_INFO("Starting kilo version %s Session", KILO_VERSION);
 }
 
 void closeLogFile()
 {
 	if (logfd == -1) return;
-	logm("--- Closing Kilo %s Session ---\n", KILO_VERSION);
-	if (close(logfd) == -1) die("Close Log file");
+	LOG_INFO("Closing kilo %s Session...", KILO_VERSION);
+	if (close(logfd) == -1) die("Close Log file error");
+}
+
+void logm(const char *level, const char *func, int line, const char *format, ...)
+{
+	if (logfd == -1) return;
+
+	char buf[MAX_MSG_LEN];
+	va_list args;
+	const char *color;
+
+	/* Get current time */
+	char timebuf[20];
+	time_t now = time(NULL);
+	struct tm *t = localtime(&now);
+	strftime(timebuf, sizeof(timebuf), "%Y-%m-%d %H:%M:%S", t);
+
+	/* Get the color of the header */
+	if (strcmp(level, "DEBUG") == 0) color = "\x1b[34m";
+	else if (strcmp(level, "INFO") == 0) color = "\x1b[32m";
+	else if (strcmp(level, "WARN") == 0) color = "\x1b[33m";
+	else if (strcmp(level, "ERROR") == 0) color = "\x1b[31m";
+
+	/* Start log entry with metadata */
+	int headlen = snprintf(buf, MAX_MSG_LEN,
+						   "%s[%s] [%s] [%s:%d]\x1b[0m ",
+						   color, timebuf, level, func, line);
+
+	/* append msg with the extra metadata */
+	va_start(args, format);
+	int msglen = vsnprintf(buf + headlen, MAX_MSG_LEN - headlen, format, args);
+	int len = msglen + headlen;
+	va_end(args);
+
+	if (msglen < 0) die("Log Message Format error");
+
+	if (len >= MAX_MSG_LEN) len = MAX_MSG_LEN - 1;
+
+	/* write to log file with a gaurenteed new line character */
+	int bytes_written;
+	bytes_written = write(logfd, buf, len);
+	write(logfd, "\n", 1);
+	/* fsync(logfd);  Only Enable if program is crashing*/
+
+	/* Writing to file errors */
+	if (bytes_written == -1) die("Write to Log file");
+	if (bytes_written < len) die("Write to Log file, Not enough space");
 }
 
 /*** init ***/
