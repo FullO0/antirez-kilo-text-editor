@@ -35,7 +35,7 @@ void closeLogFile();
 
 /*** defines ***/
 
-#define KILO_VERSION "0.0.47"
+#define KILO_VERSION "0.0.48"
 #define LOG_FILE_PATH "/home/christian/kilo.log" /* TODO: make this Dynamic */
 #define MAX_MSG_LEN 512
 
@@ -47,10 +47,10 @@ void closeLogFile();
 #define CTRL_KEY(key) ((key) & 0x1f)
 
 enum editorKey {
-	ARROW_LEFT = 'a',
-	ARROW_RIGHT = 'd',
-	ARROW_UP = 'w',
-	ARROW_DOWN = 's'
+	ARROW_LEFT = 1000,
+	ARROW_RIGHT,
+	ARROW_UP,
+	ARROW_DOWN
 };
 
 /*** global variables ***/
@@ -103,7 +103,7 @@ void enableRawMode()
 	LOG_INFO("Enabled terminal raw mode.");
 }
 
-char editorReadKey()
+int editorReadKey()
 {
 	int nread;
 	char c;
@@ -200,7 +200,7 @@ void abFree(struct abuf *ab)
 
 /*** input ***/
 
-void editorMoveCursor(char key)
+void editorMoveCursor(int key)
 {
 	switch (key) {
 		case ARROW_LEFT:
@@ -220,7 +220,7 @@ void editorMoveCursor(char key)
 
 void editorProcessKeypress()
 {
-	char c = editorReadKey();
+	int c = editorReadKey();
 
 	switch (c) {
 		case CTRL_KEY('q'):
