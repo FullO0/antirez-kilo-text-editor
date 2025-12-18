@@ -35,7 +35,7 @@ void closeLogFile();
 
 /*** defines ***/
 
-#define KILO_VERSION "0.3.52"
+#define KILO_VERSION "0.3.53"
 #define LOG_FILE_PATH "/home/christian/kilo.log" /* TODO: make this Dynamic */
 #define MAX_MSG_LEN 512
 
@@ -271,6 +271,14 @@ void editorProcessKeypress()
 
 			closeLogFile();
 			exit(0);
+			break;
+
+		case HOME_KEY:
+			E.cx = 0;
+			break;
+
+		case END_KEY:
+			E.cx = E.screencols - 1;
 			break;
 
 		case PAGE_UP:
