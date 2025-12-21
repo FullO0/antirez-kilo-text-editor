@@ -40,7 +40,7 @@ void closeLogFile();
 
 /*** defines ***/
 
-#define KILO_VERSION "0.4.58"
+#define KILO_VERSION "0.4.60"
 #define LOG_FILE_PATH "/home/christian/kilo.log" /* TODO: make this Dynamic */
 #define MAX_MSG_LEN 512
 
@@ -350,7 +350,7 @@ void editorDrawRows(struct abuf *ab)
 	char welcome[80];
 	for (y = 0; y < E.screenrows; y++) {
 		if (y >= E.numrows) {
-			if (y == E.screenrows / 3) {
+			if (E.numrows == 0 && y == E.screenrows / 3) {
 
 				/* append the welcome message into a welcome buffer */
 				welcome_len = snprintf(welcome, sizeof(welcome),
