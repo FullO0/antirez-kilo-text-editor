@@ -36,7 +36,7 @@ void closeLogFile();
 
 /*** defines ***/
 
-#define KILO_VERSION "0.4.55"
+#define KILO_VERSION "0.4.57"
 #define LOG_FILE_PATH "/home/christian/kilo.log" /* TODO: make this Dynamic */
 #define MAX_MSG_LEN 512
 
@@ -331,27 +331,34 @@ void editorDrawRows(struct abuf *ab)
 	int y, welcome_len, padding;
 	char welcome[80];
 	for (y = 0; y < E.screenrows; y++) {
-		if (y == E.screenrows / 3) {
+		if (y >= E.numrows) {
+			if (y == E.screenrows / 3) {
 
-			/* append the welcome message into a welcome buffer */
-			welcome_len = snprintf(welcome, sizeof(welcome),
-						"Kilo editor -- version %s", KILO_VERSION);
+				/* append the welcome message into a welcome buffer */
+				welcome_len = snprintf(welcome, sizeof(welcome),
+							"Kilo editor -- version %s", KILO_VERSION);
 
-			/* if there are'nt enough columns to display the welcome message */
-			if (welcome_len > E.screencols) welcome_len = E.screencols;
+				/* if there are'nt enough columns to display the welcome message */
+				if (welcome_len > E.screencols) welcome_len = E.screencols;
 
-			/* Center the welcome message */
-			padding = (E.screencols - welcome_len) / 2;
-			if (padding) {
+				/* Center the welcome message */
+				padding = (E.screencols - welcome_len) / 2;
+				if (padding) {
+					abAppend(ab, "|", 1);
+					padding--;
+				}
+				while (padding--) abAppend(ab, " ", 1);
+
+				/* add the welcome message into the main buffer */
+				abAppend(ab, welcome, welcome_len);
+			} else {
 				abAppend(ab, "|", 1);
-				padding--;
 			}
-			while (padding--) abAppend(ab, " ", 1);
 
-			/* add the welcome message into the main buffer */
-			abAppend(ab, welcome, welcome_len);
 		} else {
-			abAppend(ab, "|", 1);
+			int len = E.row.size;
+			if (len > E.screencols) len = E.screencols;
+			abAppend(ab, E.row.chars, len);
 		}
 
 		/* erase everything to the right of the cursor */
