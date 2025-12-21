@@ -13,12 +13,16 @@
 
 
 /*** includes ***/
+#define _DEFAULT_SOURCE
+#define _BSD_SOURCE
+#define _GNU_SOURCE
 
 #include <asm-generic/ioctls.h>
 #include <ctype.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <stdarg.h>
+#include <stddef.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
@@ -36,7 +40,7 @@ void closeLogFile();
 
 /*** defines ***/
 
-#define KILO_VERSION "0.4.57"
+#define KILO_VERSION "0.4.58"
 #define LOG_FILE_PATH "/home/christian/kilo.log" /* TODO: make this Dynamic */
 #define MAX_MSG_LEN 512
 
@@ -219,16 +223,30 @@ int getWindowSize(int *rows, int *cols)
 
 /*** file i/o ***/
 
-void editorOpen()
+void editorOpen(char *filename)
 {
-	char *line = "Hello, World!";
-	ssize_t linelen = 13;
+	FILE *fp = fopen(filename, "r");
+	LOG_INFO("Opening %s for reading", filename);
+	if (!fp) die("fopen");
 
-	E.row.size = linelen;
-	E.row.chars = malloc(linelen + 1);
-	memcpy(E.row.chars, line, linelen);
-	E.row.chars[linelen] = '\0';
-	E.numrows = 1;
+	char *line = NULL;
+	size_t linecap = 0;
+	ssize_t linelen;
+	linelen = getline(&line, &linecap, fp);
+	if (linelen != 1) {
+		while (linelen > 0 && (line[linelen - 1] == '\n' ||
+							   line[linelen - 1] == '\r'))
+			linelen--;
+
+		E.row.size = linelen;
+		E.row.chars = malloc(linelen + 1);
+		memcpy(E.row.chars, line, linelen);
+		E.row.chars[linelen] = '\0';
+		E.numrows = 1;
+	}
+	free(line);
+	LOG_INFO("Closing %s after reading", filename);
+	fclose(fp);
 }
 
 /*** append buffer ***/
@@ -467,12 +485,14 @@ void initEditor()
 	if (getWindowSize(&E.screenrows, &E.screencols) == -1) die("getWindowSize");
 }
 
-int main()
+int main(int argc, char *argv[])
 {
 	initLogFile();
 	enableRawMode();
 	initEditor();
-	editorOpen();
+	if (argc >= 2) {
+		editorOpen(argv[1]);
+	}
 
 	while (1) {
 		editorRefreshScreen();
