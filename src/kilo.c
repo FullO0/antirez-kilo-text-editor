@@ -23,6 +23,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <sys/ioctl.h>
+#include <sys/types.h>
 #include <sys/stat.h>
 #include <termios.h>
 #include <time.h>
@@ -35,7 +36,7 @@ void closeLogFile();
 
 /*** defines ***/
 
-#define KILO_VERSION "0.3.54"
+#define KILO_VERSION "0.4.55"
 #define LOG_FILE_PATH "/home/christian/kilo.log" /* TODO: make this Dynamic */
 #define MAX_MSG_LEN 512
 
@@ -64,10 +65,17 @@ int logfd; /* file descriptor for the log file */
 
 /*** data ***/
 
+typedef struct erow {
+	int size;
+	char *chars;
+} erow;
+
 struct editorConfig {
 	int cx, cy;
 	int screenrows;
 	int screencols;
+	int numrows;
+	erow row;
 	struct termios orig_termios;
 };
 
@@ -207,6 +215,20 @@ int getWindowSize(int *rows, int *cols)
 		*rows = ws.ws_row;
 		return 0;
 	}
+}
+
+/*** file i/o ***/
+
+void editorOpen()
+{
+	char *line = "Hello, World!";
+	ssize_t linelen = 13;
+
+	E.row.size = linelen;
+	E.row.chars = malloc(linelen + 1);
+	memcpy(E.row.chars, line, linelen);
+	E.row.chars[linelen] = '\0';
+	E.numrows = 1;
 }
 
 /*** append buffer ***/
@@ -434,6 +456,7 @@ void initEditor()
 {
 	E.cx = 0;
 	E.cy = 0;
+	E.numrows = 0;
 	if (getWindowSize(&E.screenrows, &E.screencols) == -1) die("getWindowSize");
 }
 
@@ -442,6 +465,7 @@ int main()
 	initLogFile();
 	enableRawMode();
 	initEditor();
+	editorOpen();
 
 	while (1) {
 		editorRefreshScreen();
