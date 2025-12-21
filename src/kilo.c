@@ -5,8 +5,6 @@
  * Created on 12/11/2025
  * */
 
-/* Last Finished Chapter: 2 */
-
 /* TODO: can maby make this more general and use ncurses library to figure out
  * my terminals cababiliteis and adapt the program for the specific terminal we
  * are working in */
@@ -40,7 +38,7 @@ void closeLogFile();
 
 /*** defines ***/
 
-#define KILO_VERSION "0.4.60"
+#define KILO_VERSION "0.4.61"
 #define LOG_FILE_PATH "/home/christian/kilo.log" /* TODO: make this Dynamic */
 #define MAX_MSG_LEN 512
 
@@ -79,7 +77,7 @@ struct editorConfig {
 	int screenrows;
 	int screencols;
 	int numrows;
-	erow row;
+	erow *row;
 	struct termios orig_termios;
 };
 
@@ -221,6 +219,22 @@ int getWindowSize(int *rows, int *cols)
 	}
 }
 
+/*** row operations ***/
+
+void editorAppendRow(char *s, size_t len, char *filename)
+{
+	E.row = realloc(E.row, sizeof(erow) * (E.numrows + 1));
+
+	int at = E.numrows;
+	LOG_DEBUG("Read line %d from %s as string: \n %s", at, filename, s);
+	E.row[at].size = len;
+	E.row[at].chars = malloc(len + 1);
+	memcpy(E.row[at].chars, s, len);
+	E.row[at].chars[len] = '\0';
+	LOG_DEBUG("Appended row %d with line %d string", E.numrows, at);
+	E.numrows++;
+}
+
 /*** file i/o ***/
 
 void editorOpen(char *filename)
@@ -232,20 +246,14 @@ void editorOpen(char *filename)
 	char *line = NULL;
 	size_t linecap = 0;
 	ssize_t linelen;
-	linelen = getline(&line, &linecap, fp);
-	if (linelen != 1) {
+	while ((linelen = getline(&line, &linecap, fp)) != -1) {
 		while (linelen > 0 && (line[linelen - 1] == '\n' ||
 							   line[linelen - 1] == '\r'))
 			linelen--;
-
-		E.row.size = linelen;
-		E.row.chars = malloc(linelen + 1);
-		memcpy(E.row.chars, line, linelen);
-		E.row.chars[linelen] = '\0';
-		E.numrows = 1;
+		editorAppendRow(line, linelen, filename);
 	}
 	free(line);
-	LOG_INFO("Closing %s after reading", filename);
+	LOG_INFO("Closing %s after reading from it", filename);
 	fclose(fp);
 }
 
@@ -374,9 +382,9 @@ void editorDrawRows(struct abuf *ab)
 			}
 
 		} else {
-			int len = E.row.size;
+			int len = E.row[y].size;
 			if (len > E.screencols) len = E.screencols;
-			abAppend(ab, E.row.chars, len);
+			abAppend(ab, E.row[y].chars, len);
 		}
 
 		/* erase everything to the right of the cursor */
@@ -482,6 +490,7 @@ void initEditor()
 	E.cx = 0;
 	E.cy = 0;
 	E.numrows = 0;
+	E.row = NULL;
 	if (getWindowSize(&E.screenrows, &E.screencols) == -1) die("getWindowSize");
 }
 
