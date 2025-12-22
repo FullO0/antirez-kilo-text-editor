@@ -38,7 +38,7 @@ void closeLogFile();
 
 /*** defines ***/
 
-#define KILO_VERSION "0.4.61"
+#define KILO_VERSION "0.4.66"
 #define LOG_FILE_PATH "/home/christian/kilo.log" /* TODO: make this Dynamic */
 #define MAX_MSG_LEN 512
 
@@ -74,6 +74,7 @@ typedef struct erow {
 
 struct editorConfig {
 	int cx, cy;
+	int rowoff;
 	int screenrows;
 	int screencols;
 	int numrows;
@@ -302,7 +303,7 @@ void editorMoveCursor(int key)
 			}
 			break;
 		case ARROW_DOWN:
-			if (E.cy < E.screenrows - 1) {
+			if (E.cy < E.numrows) {
 				E.cy++;
 			}
 			break;
@@ -352,12 +353,25 @@ void editorProcessKeypress()
 
 /*** output ***/
 
+void editorScroll()
+{
+	if (E.cy < E.rowoff) {
+		E.rowoff = E.cy;
+	}
+	if (E.cy >= E.rowoff + E.screenrows) {
+		E.rowoff = E.cy - E.screenrows + 1;
+	}
+}
+
 void editorDrawRows(struct abuf *ab)
 {
-	int y, welcome_len, padding;
+	int y, welcome_len, padding, filerow;
 	char welcome[80];
+	LOG_DEBUG("Drawing screen...");
+	LOG_DEBUG("Start drawing screen at rowoff = %d", E.rowoff);
 	for (y = 0; y < E.screenrows; y++) {
-		if (y >= E.numrows) {
+		filerow = y + E.rowoff;
+		if (filerow >= E.numrows) {
 			if (E.numrows == 0 && y == E.screenrows / 3) {
 
 				/* append the welcome message into a welcome buffer */
@@ -377,14 +391,17 @@ void editorDrawRows(struct abuf *ab)
 
 				/* add the welcome message into the main buffer */
 				abAppend(ab, welcome, welcome_len);
+				LOG_DEBUG("Drew file row %d with string %s", filerow, welcome);
 			} else {
 				abAppend(ab, "|", 1);
+				LOG_DEBUG("Drew file row %d with string |", filerow);
 			}
 
 		} else {
-			int len = E.row[y].size;
+			int len = E.row[filerow].size;
 			if (len > E.screencols) len = E.screencols;
-			abAppend(ab, E.row[y].chars, len);
+			abAppend(ab, E.row[filerow].chars, len);
+			LOG_DEBUG("Drew file row %d with string %s", filerow, E.row[filerow].chars);
 		}
 
 		/* erase everything to the right of the cursor */
@@ -394,10 +411,13 @@ void editorDrawRows(struct abuf *ab)
 			abAppend(ab, "\r\n", 2);
 		}
 	}
+	LOG_DEBUG("Drawing screen finished");
 }
 
 void editorRefreshScreen()
 {
+	editorScroll();
+
 	struct abuf ab = ABUF_INIT;
 
 	/* Hides the cursor */
@@ -408,9 +428,9 @@ void editorRefreshScreen()
 
 	editorDrawRows(&ab);
 
-	/* moves the cursor to wherever E.cy (rows) and E.cx (cols) is */
+	/* moves the cursor to wherever E.cy - E.rowoff (row on the screen) and E.cx (cols) is */
 	char buf[32];
-	unsigned int buf_len = snprintf(buf, sizeof(buf), "\x1b[%d;%dH", E.cy + 1, E.cx + 1);
+	unsigned int buf_len = snprintf(buf, sizeof(buf), "\x1b[%d;%dH", (E.cy - E.rowoff) + 1, E.cx + 1);
 	if (buf_len >= sizeof(buf)) buf_len = sizeof(buf) - 1;
 	abAppend(&ab, buf, buf_len);
 
@@ -489,6 +509,7 @@ void initEditor()
 {
 	E.cx = 0;
 	E.cy = 0;
+	E.rowoff = 0;
 	E.numrows = 0;
 	E.row = NULL;
 	if (getWindowSize(&E.screenrows, &E.screencols) == -1) die("getWindowSize");
