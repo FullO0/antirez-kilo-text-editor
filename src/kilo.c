@@ -38,7 +38,7 @@ void closeLogFile();
 
 /*** defines ***/
 
-#define KILO_VERSION "0.4.66"
+#define KILO_VERSION "0.4.71"
 #define LOG_FILE_PATH "/home/christian/kilo.log" /* TODO: make this Dynamic */
 #define MAX_MSG_LEN 512
 
@@ -75,6 +75,7 @@ typedef struct erow {
 struct editorConfig {
 	int cx, cy;
 	int rowoff;
+	int coloff;
 	int screenrows;
 	int screencols;
 	int numrows;
@@ -293,9 +294,7 @@ void editorMoveCursor(int key)
 			}
 			break;
 		case ARROW_RIGHT:
-			if (E.cx < E.screencols - 1) {
-				E.cx++;
-			}
+			E.cx++;
 			break;
 		case ARROW_UP:
 			if (E.cy > 0) {
@@ -355,11 +354,21 @@ void editorProcessKeypress()
 
 void editorScroll()
 {
+
+	/* Vertical Scrolling */
 	if (E.cy < E.rowoff) {
 		E.rowoff = E.cy;
 	}
 	if (E.cy >= E.rowoff + E.screenrows) {
 		E.rowoff = E.cy - E.screenrows + 1;
+	}
+
+	/* Horizontal Scrolling */
+	if (E.cx < E.coloff) {
+		E.coloff = E.cx;
+	}
+	if (E.cx >= E.coloff + E.screencols) {
+		E.coloff = E.cx - E.screencols + 1;
 	}
 }
 
@@ -391,16 +400,18 @@ void editorDrawRows(struct abuf *ab)
 
 				/* add the welcome message into the main buffer */
 				abAppend(ab, welcome, welcome_len);
-				LOG_DEBUG("Drew file row %d with string %s", filerow, welcome);
+				LOG_DEBUG("Drew file row %d with welcome message", filerow);
 			} else {
 				abAppend(ab, "|", 1);
 				LOG_DEBUG("Drew file row %d with string |", filerow);
 			}
 
+		/* Draw non empty rows */
 		} else {
-			int len = E.row[filerow].size;
+			int len = E.row[filerow].size - E.coloff;
+			if (len < 0) len = 0;
 			if (len > E.screencols) len = E.screencols;
-			abAppend(ab, E.row[filerow].chars, len);
+			abAppend(ab, &E.row[filerow].chars[E.coloff], len);
 			LOG_DEBUG("Drew file row %d with string %s", filerow, E.row[filerow].chars);
 		}
 
@@ -428,9 +439,9 @@ void editorRefreshScreen()
 
 	editorDrawRows(&ab);
 
-	/* moves the cursor to wherever E.cy - E.rowoff (row on the screen) and E.cx (cols) is */
+	/* moves the cursor to wherever E.cy - E.rowoff (row on the screen) and E.cx - E.coloff (cols on the screen) is */
 	char buf[32];
-	unsigned int buf_len = snprintf(buf, sizeof(buf), "\x1b[%d;%dH", (E.cy - E.rowoff) + 1, E.cx + 1);
+	unsigned int buf_len = snprintf(buf, sizeof(buf), "\x1b[%d;%dH", (E.cy - E.rowoff) + 1, (E.cx - E.coloff) + 1);
 	if (buf_len >= sizeof(buf)) buf_len = sizeof(buf) - 1;
 	abAppend(&ab, buf, buf_len);
 
@@ -510,6 +521,7 @@ void initEditor()
 	E.cx = 0;
 	E.cy = 0;
 	E.rowoff = 0;
+	E.coloff = 0;
 	E.numrows = 0;
 	E.row = NULL;
 	if (getWindowSize(&E.screenrows, &E.screencols) == -1) die("getWindowSize");
