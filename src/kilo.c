@@ -38,9 +38,11 @@ void closeLogFile();
 
 /*** defines ***/
 
-#define KILO_VERSION "0.4.71"
+#define KILO_VERSION "0.4.80"
 #define LOG_FILE_PATH "/home/christian/kilo.log" /* TODO: make this Dynamic */
 #define MAX_MSG_LEN 512
+
+#define KILO_TAB_STOP 8
 
 #define LOG_INFO(...) logm("INFO", __func__, __LINE__, __VA_ARGS__)
 #define LOG_DEBUG(...) logm("DEBUG", __func__, __LINE__, __VA_ARGS__)
@@ -69,7 +71,9 @@ int logfd; /* file descriptor for the log file */
 
 typedef struct erow {
 	int size;
+	int rsize;
 	char *chars;
+	char *render;
 } erow;
 
 struct editorConfig {
@@ -222,6 +226,36 @@ int getWindowSize(int *rows, int *cols)
 }
 
 /*** row operations ***/
+void editorUpdateRow(erow *row)
+{
+	int j;
+
+	/* count the tabs */
+	int tabs = 0;
+	for (j = 0; j < row->size; j++) {
+		if (row->chars[j] == '\t') tabs++;
+	}
+
+	free(row->render);
+	row->render = malloc(row->size + tabs*(KILO_TAB_STOP - 1) + 1);
+
+	/* render chars correctly */
+	int idx = 0;
+	for (j = 0; j < row->size; j++) {
+
+		/* Tabs */
+		if (row->chars[j] == '\t') {
+			row->render[idx++] = ' ';
+			while (idx % KILO_TAB_STOP != 0) row->render[idx++] = ' ';
+
+		/* normal text */
+		} else {
+			row->render[idx++] = row->chars[j];
+		}
+	}
+	row->render[idx] = '\0';
+	row->rsize = idx;
+}
 
 void editorAppendRow(char *s, size_t len, char *filename)
 {
@@ -233,7 +267,13 @@ void editorAppendRow(char *s, size_t len, char *filename)
 	E.row[at].chars = malloc(len + 1);
 	memcpy(E.row[at].chars, s, len);
 	E.row[at].chars[len] = '\0';
-	LOG_DEBUG("Appended row %d with line %d string", E.numrows, at);
+
+	E.row[at].rsize = 0;
+	E.row[at].render = NULL;
+	editorUpdateRow(&E.row[at]);
+	LOG_DEBUG("Rendered line %d from %s as string: \n %s with length %d", 
+			  at, filename, E.row[at].render, E.row[at].rsize);
+
 	E.numrows++;
 }
 
@@ -425,11 +465,11 @@ void editorDrawRows(struct abuf *ab)
 
 		/* Draw non empty rows */
 		} else {
-			int len = E.row[filerow].size - E.coloff;
+			int len = E.row[filerow].rsize - E.coloff;
 			if (len < 0) len = 0;
 			if (len > E.screencols) len = E.screencols;
-			abAppend(ab, &E.row[filerow].chars[E.coloff], len);
-			LOG_DEBUG("Drew file row %d with string %s", filerow, E.row[filerow].chars);
+			abAppend(ab, &E.row[filerow].render[E.coloff], len);
+			LOG_DEBUG("Drew file row %d with string %s", filerow, E.row[filerow].render);
 		}
 
 		/* erase everything to the right of the cursor */
