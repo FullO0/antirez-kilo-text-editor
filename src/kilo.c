@@ -38,7 +38,7 @@ void closeLogFile();
 
 /*** defines ***/
 
-#define KILO_VERSION "0.4.90"
+#define KILO_VERSION "0.4.91"
 #define LOG_FILE_PATH "/home/christian/kilo.log" /* TODO: make this Dynamic */
 #define MAX_MSG_LEN 512
 
@@ -397,7 +397,8 @@ void editorProcessKeypress()
 			break;
 
 		case END_KEY:
-			E.cx = E.screencols - 1;
+			if (E.cy < E.numrows)
+				E.cx = E.row[E.cy].size;
 			break;
 
 		case PAGE_UP:
@@ -498,9 +499,8 @@ void editorDrawRows(struct abuf *ab)
 		/* erase everything to the right of the cursor */
 		abAppend(ab, "\x1b[K", 3);
 
-		if (y < E.screenrows - 1) {
-			abAppend(ab, "\r\n", 2);
-		}
+		/* insert cariage return at every new row */
+		abAppend(ab, "\r\n", 2);
 	}
 	LOG_DEBUG("Drawing screen finished");
 }
@@ -607,6 +607,7 @@ void initEditor()
 	E.numrows = 0;
 	E.row = NULL;
 	if (getWindowSize(&E.screenrows, &E.screencols) == -1) die("getWindowSize");
+	E.screenrows -= 1;
 }
 
 int main(int argc, char *argv[])
