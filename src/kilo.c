@@ -85,6 +85,7 @@ struct editorConfig {
 	int screencols;
 	int numrows;
 	erow *row;
+	char *filename;
 	struct termios orig_termios;
 };
 
@@ -269,12 +270,12 @@ void editorUpdateRow(erow *row)
 	row->rsize = idx;
 }
 
-void editorAppendRow(char *s, size_t len, char *filename)
+void editorAppendRow(char *s, size_t len)
 {
 	E.row = realloc(E.row, sizeof(erow) * (E.numrows + 1));
 
 	int at = E.numrows;
-	LOG_DEBUG("Read line %d from %s as string: \n %s", at, filename, s);
+	LOG_DEBUG("Read line %d from %s as string: \n %s", at, E.filename, s);
 	E.row[at].size = len;
 	E.row[at].chars = malloc(len + 1);
 	memcpy(E.row[at].chars, s, len);
@@ -284,7 +285,7 @@ void editorAppendRow(char *s, size_t len, char *filename)
 	E.row[at].render = NULL;
 	editorUpdateRow(&E.row[at]);
 	LOG_DEBUG("Rendered line %d from %s as string: \n %s with length %d", 
-			  at, filename, E.row[at].render, E.row[at].rsize);
+			  at, E.filename, E.row[at].render, E.row[at].rsize);
 
 	E.numrows++;
 }
@@ -293,6 +294,8 @@ void editorAppendRow(char *s, size_t len, char *filename)
 
 void editorOpen(char *filename)
 {
+	free(E.filename);
+	E.filename = strdup(filename);
 	FILE *fp = fopen(filename, "r");
 	LOG_INFO("Opening %s for reading", filename);
 	if (!fp) die("fopen");
@@ -304,7 +307,7 @@ void editorOpen(char *filename)
 		while (linelen > 0 && (line[linelen - 1] == '\n' ||
 							   line[linelen - 1] == '\r'))
 			linelen--;
-		editorAppendRow(line, linelen, filename);
+		editorAppendRow(line, linelen);
 	}
 	free(line);
 	LOG_INFO("Closing %s after reading from it", filename);
@@ -502,7 +505,33 @@ void editorDrawRows(struct abuf *ab)
 		/* insert cariage return at every new row */
 		abAppend(ab, "\r\n", 2);
 	}
-	LOG_DEBUG("Drawing screen finished");
+	LOG_DEBUG("Drawing screen finished.");
+}
+
+void editorDrawStatus(struct abuf *ab)
+{
+	LOG_INFO("Drawing Statusbar...");
+	abAppend(ab, "\x1b[7m", 4);
+
+	char status[80], rstatus[80];
+	int len = snprintf(status, sizeof(status), " %.20s - %d lines", 
+					E.filename ? E.filename : "[No Name]", E.numrows);
+	int rlen = snprintf(rstatus, sizeof(rstatus), "%d:%d ",
+					 E.cy + 1, E.cx + 1);
+	if (len > E.screencols) len = E.screencols;
+	abAppend(ab, status, len);
+
+	for (; len < E.screencols; len++) {
+		if (E.screencols - len == rlen) {
+			abAppend(ab, rstatus, rlen);
+			break;
+		} else {
+			abAppend(ab, " ", 1);
+		}
+	}
+
+	abAppend(ab, "\x1b[m", 3);
+	LOG_INFO("Drawing Statusbar finished.");
 }
 
 void editorRefreshScreen()
@@ -518,6 +547,7 @@ void editorRefreshScreen()
 	abAppend(&ab, "\x1b[H", 3);
 
 	editorDrawRows(&ab);
+	editorDrawStatus(&ab);
 
 	/* moves the cursor to wherever E.cy - E.rowoff (row on the screen) and E.cx - E.coloff (cols on the screen) is */
 	char buf[32];
@@ -606,6 +636,8 @@ void initEditor()
 	E.coloff = 0;
 	E.numrows = 0;
 	E.row = NULL;
+	E.filename = NULL;
+
 	if (getWindowSize(&E.screenrows, &E.screencols) == -1) die("getWindowSize");
 	E.screenrows -= 1;
 }
