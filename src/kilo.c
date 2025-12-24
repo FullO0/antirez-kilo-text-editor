@@ -38,7 +38,7 @@ void closeLogFile();
 
 /*** defines ***/
 
-#define KILO_VERSION "0.4.80"
+#define KILO_VERSION "0.4.85"
 #define LOG_FILE_PATH "/home/christian/kilo.log" /* TODO: make this Dynamic */
 #define MAX_MSG_LEN 512
 
@@ -78,6 +78,7 @@ typedef struct erow {
 
 struct editorConfig {
 	int cx, cy;
+	int rx;
 	int rowoff;
 	int coloff;
 	int screenrows;
@@ -226,6 +227,17 @@ int getWindowSize(int *rows, int *cols)
 }
 
 /*** row operations ***/
+int editorRowCxToRx(erow *row, int cx)
+
+{
+	int rx = 0;
+	int j;
+	for (j = 0; j < cx; j++, rx++)
+		if (row->chars[j] == '\t')
+			rx += (KILO_TAB_STOP - 1) - (rx % KILO_TAB_STOP);
+	return rx;
+}
+
 void editorUpdateRow(erow *row)
 {
 	int j;
@@ -411,6 +423,10 @@ void editorProcessKeypress()
 
 void editorScroll()
 {
+	E.rx = 0;
+	if (E.cy < E.numrows) {
+		E.rx = editorRowCxToRx(&E.row[E.cy], E.cx);
+	}
 
 	/* Vertical Scrolling */
 	if (E.cy < E.rowoff) {
@@ -421,11 +437,11 @@ void editorScroll()
 	}
 
 	/* Horizontal Scrolling */
-	if (E.cx < E.coloff) {
-		E.coloff = E.cx;
+	if (E.rx < E.coloff) {
+		E.coloff = E.rx;
 	}
-	if (E.cx >= E.coloff + E.screencols) {
-		E.coloff = E.cx - E.screencols + 1;
+	if (E.rx >= E.coloff + E.screencols) {
+		E.coloff = E.rx - E.screencols + 1;
 	}
 }
 
@@ -498,7 +514,8 @@ void editorRefreshScreen()
 
 	/* moves the cursor to wherever E.cy - E.rowoff (row on the screen) and E.cx - E.coloff (cols on the screen) is */
 	char buf[32];
-	unsigned int buf_len = snprintf(buf, sizeof(buf), "\x1b[%d;%dH", (E.cy - E.rowoff) + 1, (E.cx - E.coloff) + 1);
+	unsigned int buf_len = snprintf(buf, sizeof(buf), "\x1b[%d;%dH",
+								    (E.cy - E.rowoff) + 1, (E.rx - E.coloff) + 1);
 	if (buf_len >= sizeof(buf)) buf_len = sizeof(buf) - 1;
 	abAppend(&ab, buf, buf_len);
 
@@ -577,6 +594,7 @@ void initEditor()
 {
 	E.cx = 0;
 	E.cy = 0;
+	E.rx = 0;
 	E.rowoff = 0;
 	E.coloff = 0;
 	E.numrows = 0;
