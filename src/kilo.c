@@ -38,7 +38,7 @@ void closeLogFile();
 
 /*** defines ***/
 
-#define KILO_VERSION "0.4.91"
+#define KILO_VERSION "0.4.97"
 #define LOG_FILE_PATH "/home/christian/kilo.log" /* TODO: make this Dynamic */
 #define MAX_MSG_LEN 512
 
@@ -86,6 +86,8 @@ struct editorConfig {
 	int numrows;
 	erow *row;
 	char *filename;
+	char statusmsg[80];
+	time_t statusmsg_time;
 	struct termios orig_termios;
 };
 
@@ -531,7 +533,22 @@ void editorDrawStatus(struct abuf *ab)
 	}
 
 	abAppend(ab, "\x1b[m", 3);
+	abAppend(ab, "\r\n", 2);
 	LOG_INFO("Drawing Statusbar finished.");
+}
+
+void editorDrawMessageBar(struct abuf *ab)
+{
+	LOG_INFO("Drawing Messagebar...");
+	abAppend(ab, "\x1b[K", 3);
+	int msglen = strlen(E.statusmsg);
+	if (msglen > E.screencols) msglen = E.screencols;
+	LOG_DEBUG("Message contents: %s", E.statusmsg);
+
+	/* Only display msg if it is less than 5 seconds old */
+	if (msglen && time(NULL) - E.statusmsg_time < 5)
+		abAppend(ab, E.statusmsg, msglen);
+	LOG_INFO("Drawing Messagebar finished.");
 }
 
 void editorRefreshScreen()
@@ -548,6 +565,7 @@ void editorRefreshScreen()
 
 	editorDrawRows(&ab);
 	editorDrawStatus(&ab);
+	editorDrawMessageBar(&ab);
 
 	/* moves the cursor to wherever E.cy - E.rowoff (row on the screen) and E.cx - E.coloff (cols on the screen) is */
 	char buf[32];
@@ -562,6 +580,16 @@ void editorRefreshScreen()
 	write(STDOUT_FILENO, ab.b, ab.len);
 	abFree(&ab);
 }
+
+void editorSetStatusMessage(const char *fmt, ...)
+{
+	va_list ap;
+	va_start(ap, fmt);
+	vsnprintf(E.statusmsg, sizeof(E.statusmsg), fmt, ap);
+	va_end(ap);
+	E.statusmsg_time = time(NULL);
+}
+
 /*** logging ***/
 
 void initLogFile()
@@ -637,9 +665,11 @@ void initEditor()
 	E.numrows = 0;
 	E.row = NULL;
 	E.filename = NULL;
+	E.statusmsg[0] = '\0';
+	E.statusmsg_time = 0;
 
 	if (getWindowSize(&E.screenrows, &E.screencols) == -1) die("getWindowSize");
-	E.screenrows -= 1;
+	E.screenrows -= 2; /* For statusbar and msg */
 }
 
 int main(int argc, char *argv[])
@@ -650,6 +680,8 @@ int main(int argc, char *argv[])
 	if (argc >= 2) {
 		editorOpen(argv[1]);
 	}
+
+	editorSetStatusMessage("Help: Ctrl-Q = quit");
 
 	while (1) {
 		editorRefreshScreen();
