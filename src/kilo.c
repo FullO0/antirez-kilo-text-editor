@@ -34,11 +34,12 @@
 /*** function prototypes ***/
 
 void logm(const char *level, const char *func, int line, const char *format, ...);
+void editorSetStatusMessage(const char *fmt, ...);
 void closeLogFile();
 
 /*** defines ***/
 
-#define KILO_VERSION "0.4.97"
+#define KILO_VERSION "0.5.105"
 #define LOG_FILE_PATH "/home/christian/kilo.log" /* TODO: make this Dynamic */
 #define MAX_MSG_LEN 512
 
@@ -315,6 +316,25 @@ void editorInsertChar(int c)
 
 /*** file i/o ***/
 
+char *editorRowsToString(int *buflen)
+{
+	int totlen = 0;
+	int j;
+	for (j = 0; j < E.numrows; totlen += E.row[j++].size + 1);
+	*buflen = totlen;
+
+	char *buf = malloc(sizeof(char) * totlen);
+	char *p = buf;
+	for (j = 0; j < E.numrows; j++) {
+		memcpy(p, E.row[j].chars, E.row[j].size);
+		p += E.row[j].size;
+		*p = '\n';
+		p++;
+	}
+
+	return buf;
+}
+
 void editorOpen(char *filename)
 {
 	free(E.filename);
@@ -335,6 +355,40 @@ void editorOpen(char *filename)
 	free(line);
 	LOG_INFO("Closing %s after reading from it", filename);
 	fclose(fp);
+}
+
+void editorSave()
+{
+	if (E.filename == NULL) return;
+
+	int len;
+	char *buf = editorRowsToString(&len);
+
+	LOG_INFO("Opening file %s to write.", E.filename);
+	int fd = open(E.filename, O_RDWR | O_CREAT, 0644);
+	if (fd != -1) {
+
+		LOG_INFO("Truncating file to new length %d...", len);
+		if (ftruncate(fd, len) != -1) {
+
+			LOG_INFO("Writing to file...");
+			if (write(fd, buf, len) == len) {
+
+				LOG_INFO("%d bytes written to %s successfully.", len, E.filename);
+				LOG_INFO("Closing %s.", E.filename);
+				close(fd);
+				free(buf);
+				editorSetStatusMessage("%d bytes written to disk in %s", len, E.filename);
+				return;
+			}
+		}
+
+		LOG_INFO("Closing %s.", E.filename);
+		close(fd);
+	}
+
+	free(buf);
+	editorSetStatusMessage("Can't save! I/O error: %s", strerror(errno));
 }
 
 /*** append buffer ***/
@@ -422,6 +476,10 @@ void editorProcessKeypress()
 			exit(0);
 			break;
 
+		case CTRL_KEY('s'):
+			editorSave();
+			break;
+
 		case HOME_KEY:
 			E.cx = 0;
 			break;
@@ -503,7 +561,7 @@ void editorDrawRows(struct abuf *ab)
 	int y, welcome_len, padding, filerow;
 	char welcome[80];
 	LOG_DEBUG("Drawing screen...");
-	LOG_DEBUG("Start drawing screen at rowoff = %d", E.rowoff);
+	//LOG_DEBUG("Start drawing screen at rowoff = %d", E.rowoff);
 	for (y = 0; y < E.screenrows; y++) {
 		filerow = y + E.rowoff;
 		if (filerow >= E.numrows) {
@@ -526,10 +584,10 @@ void editorDrawRows(struct abuf *ab)
 
 				/* add the welcome message into the main buffer */
 				abAppend(ab, welcome, welcome_len);
-				LOG_DEBUG("Drew file row %d with welcome message", filerow);
+				//LOG_DEBUG("Drew file row %d with welcome message", filerow);
 			} else {
 				abAppend(ab, "|", 1);
-				LOG_DEBUG("Drew file row %d with string |", filerow);
+				//LOG_DEBUG("Drew file row %d with string |", filerow);
 			}
 
 		/* Draw non empty rows */
@@ -538,7 +596,7 @@ void editorDrawRows(struct abuf *ab)
 			if (len < 0) len = 0;
 			if (len > E.screencols) len = E.screencols;
 			abAppend(ab, &E.row[filerow].render[E.coloff], len);
-			LOG_DEBUG("Drew file row %d with string %s", filerow, E.row[filerow].render);
+			//LOG_DEBUG("Drew file row %d with string %s", filerow, E.row[filerow].render);
 		}
 
 		/* erase everything to the right of the cursor */
@@ -721,7 +779,7 @@ int main(int argc, char *argv[])
 		editorOpen(argv[1]);
 	}
 
-	editorSetStatusMessage("Help: Ctrl-Q = quit");
+	editorSetStatusMessage("Help: Ctrl-S = save | Ctrl-Q = quit");
 
 	while (1) {
 		editorRefreshScreen();
