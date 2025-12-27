@@ -39,11 +39,12 @@ void closeLogFile();
 
 /*** defines ***/
 
-#define KILO_VERSION "0.5.105"
+#define KILO_VERSION "0.5.111"
 #define LOG_FILE_PATH "/home/christian/kilo.log" /* TODO: make this Dynamic */
 #define MAX_MSG_LEN 512
 
 #define KILO_TAB_STOP 8
+#define KILO_DIRTY_QUIT_TIMES 3
 
 #define LOG_INFO(...) logm("INFO", __func__, __LINE__, __VA_ARGS__)
 #define LOG_DEBUG(...) logm("DEBUG", __func__, __LINE__, __VA_ARGS__)
@@ -87,6 +88,7 @@ struct editorConfig {
 	int screencols;
 	int numrows;
 	erow *row;
+	int dirty;
 	char *filename;
 	char statusmsg[80];
 	time_t statusmsg_time;
@@ -292,6 +294,7 @@ void editorAppendRow(char *s, size_t len)
 			  at, E.filename, E.row[at].render, E.row[at].rsize);
 
 	E.numrows++;
+	E.dirty++;
 }
 
 void editorRowInsertChar(erow *row, int at, int c)
@@ -303,6 +306,7 @@ void editorRowInsertChar(erow *row, int at, int c)
 	row->size++;
 	row->chars[at] = c;
 	editorUpdateRow(row);
+	E.dirty++;
 }
 
 /*** editor operations ***/
@@ -355,6 +359,7 @@ void editorOpen(char *filename)
 	free(line);
 	LOG_INFO("Closing %s after reading from it", filename);
 	fclose(fp);
+	E.dirty = 0;
 }
 
 void editorSave()
@@ -379,6 +384,7 @@ void editorSave()
 				close(fd);
 				free(buf);
 				editorSetStatusMessage("%d bytes written to disk in %s", len, E.filename);
+				E.dirty = 0;
 				return;
 			}
 		}
@@ -461,6 +467,7 @@ void editorMoveCursor(int key)
 
 void editorProcessKeypress()
 {
+	static int quit_times = KILO_DIRTY_QUIT_TIMES;
 	int c = editorReadKey();
 
 	switch (c) {
@@ -469,6 +476,11 @@ void editorProcessKeypress()
 			break;
 
 		case CTRL_KEY('q'):
+			if (E.dirty && quit_times > 0) {
+				editorSetStatusMessage("WARNING!!! File has unsaved changes... Press Ctrl-Q %d more times to quit.", quit_times);
+				quit_times--;
+				return;
+			}
 			write(STDOUT_FILENO, "\x1b[2J", 4); /* clears screen */
 			write(STDOUT_FILENO, "\x1b[H", 3); /* resetes cursor position */
 
@@ -527,6 +539,8 @@ void editorProcessKeypress()
 		default:
 			editorInsertChar(c);
 			break;
+
+		quit_times = KILO_DIRTY_QUIT_TIMES;
 	}
 }
 
@@ -614,8 +628,9 @@ void editorDrawStatus(struct abuf *ab)
 	abAppend(ab, "\x1b[7m", 4);
 
 	char status[80], rstatus[80];
-	int len = snprintf(status, sizeof(status), " %.20s - %d lines", 
-					E.filename ? E.filename : "[No Name]", E.numrows);
+	int len = snprintf(status, sizeof(status), " %.20s - %d lines %s", 
+					E.filename ? E.filename : "[No Name]", E.numrows,
+					E.dirty ? "(Modified)" : "");
 	int rlen = snprintf(rstatus, sizeof(rstatus), "%d:%d ",
 					 E.cy + 1, E.cx + 1);
 	if (len > E.screencols) len = E.screencols;
@@ -762,6 +777,7 @@ void initEditor()
 	E.coloff = 0;
 	E.numrows = 0;
 	E.row = NULL;
+	E.dirty = 0;
 	E.filename = NULL;
 	E.statusmsg[0] = '\0';
 	E.statusmsg_time = 0;
