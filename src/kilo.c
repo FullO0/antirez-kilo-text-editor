@@ -39,7 +39,7 @@ void closeLogFile();
 
 /*** defines ***/
 
-#define KILO_VERSION "0.5.111"
+#define KILO_VERSION "0.5.116"
 #define LOG_FILE_PATH "/home/christian/kilo.log" /* TODO: make this Dynamic */
 #define MAX_MSG_LEN 512
 
@@ -234,6 +234,7 @@ int getWindowSize(int *rows, int *cols)
 }
 
 /*** row operations ***/
+
 int editorRowCxToRx(erow *row, int cx)
 
 {
@@ -281,7 +282,7 @@ void editorAppendRow(char *s, size_t len)
 	E.row = realloc(E.row, sizeof(erow) * (E.numrows + 1));
 
 	int at = E.numrows;
-	LOG_DEBUG("Read line %d from %s as string: \n %s", at, E.filename, s);
+	LOG_DEBUG("Read line %d from %s as string: \n %s.", at, E.filename, s);
 	E.row[at].size = len;
 	E.row[at].chars = malloc(len + 1);
 	memcpy(E.row[at].chars, s, len);
@@ -290,7 +291,7 @@ void editorAppendRow(char *s, size_t len)
 	E.row[at].rsize = 0;
 	E.row[at].render = NULL;
 	editorUpdateRow(&E.row[at]);
-	LOG_DEBUG("Rendered line %d from %s as string: \n %s with length %d", 
+	LOG_DEBUG("Rendered line %d from %s as string: \n %s with length %d.", 
 			  at, E.filename, E.row[at].render, E.row[at].rsize);
 
 	E.numrows++;
@@ -299,12 +300,23 @@ void editorAppendRow(char *s, size_t len)
 
 void editorRowInsertChar(erow *row, int at, int c)
 {
-	LOG_DEBUG("Inserting Character at position %d in row %d", at, E.cy);
+	LOG_DEBUG("Inserting Character %c at position %d in row %d.", c, at, E.cy);
 	if (at < 0 || at > row->size) at = row->size;
 	row->chars = realloc(row->chars, row->size + 2);
 	memmove(&row->chars[at + 1], &row->chars[at], row->size - at + 1);
 	row->size++;
 	row->chars[at] = c;
+	editorUpdateRow(row);
+	E.dirty++;
+}
+
+void editorRowDeleteChar(erow *row, int at)
+{
+	LOG_DEBUG("Deleting Character %c at position %d in row %d.",
+			   row->chars[at], at, E.cy);
+	if (at < 0 || at > row->size) return;
+	memmove(&row->chars[at], &row->chars[at + 1], row->size - at);
+	row->size--;
 	editorUpdateRow(row);
 	E.dirty++;
 }
@@ -316,6 +328,17 @@ void editorInsertChar(int c)
 	if (E.cy == E.numrows) editorAppendRow("", 0);
 	editorRowInsertChar(&E.row[E.cy], E.cx, c);
 	E.cx++;
+}
+
+void editorDeleteChar()
+{
+	if (E.cy == E.numrows) return;
+
+	erow *row = &E.row[E.cy];
+	if (E.cx > 0) {
+		editorRowDeleteChar(row, E.cx - 1);
+		E.cx--;
+	}
 }
 
 /*** file i/o ***/
@@ -504,7 +527,8 @@ void editorProcessKeypress()
 		case BACKSPACE:
 		case CTRL_KEY('h'):
 		case DEL_KEY:
-			/* TODO:*/
+			if (c == DEL_KEY) editorMoveCursor(ARROW_RIGHT);
+			editorDeleteChar();
 			break;
 
 		case PAGE_UP:
