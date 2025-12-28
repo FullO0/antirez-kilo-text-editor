@@ -33,13 +33,15 @@
 
 /*** function prototypes ***/
 
-void logm(const char *level, const char *func, int line, const char *format, ...);
-void editorSetStatusMessage(const char *fmt, ...);
 void closeLogFile();
+char *editorPrompt(char *prompt);
+void editorRefreshScreen();
+void editorSetStatusMessage(const char *fmt, ...);
+void logm(const char *level, const char *func, int line, const char *format, ...);
 
 /*** defines ***/
 
-#define KILO_VERSION "0.5.122"
+#define KILO_VERSION "0.5.126"
 #define LOG_FILE_PATH "/home/christian/kilo.log" /* TODO: make this Dynamic */
 #define MAX_MSG_LEN 512
 
@@ -143,12 +145,12 @@ int editorReadKey()
 	if (c == '\x1b') {
 		char seq[3];
 
-		if (read(STDIN_FILENO, &seq[0], 1) != 1) return '\xb1';
-		if (read(STDIN_FILENO, &seq[1], 1) != 1) return '\xb1';
+		if (read(STDIN_FILENO, &seq[0], 1) != 1) return '\x1b';
+		if (read(STDIN_FILENO, &seq[1], 1) != 1) return '\x1b';
 
 		if (seq[0] == '[') {
 			if (seq[1] >= '0' && seq[1] <= '9') {
-				if (read(STDIN_FILENO, &seq[2], 1) != 1) return '\xb1';
+				if (read(STDIN_FILENO, &seq[2], 1) != 1) return '\x1b';
 
 				/* if escape sequence is page up/down or Home or End key*/
 				if (seq[2] == '~') {
@@ -189,7 +191,7 @@ int editorReadKey()
 			}
 		}
 
-		return '\xb1';
+		return '\x1b';
 	} else {
 		LOG_DEBUG("Read Keypress: %c [Hex 0x%02x]", c, (unsigned char) c);
 		return c;
@@ -438,7 +440,13 @@ void editorOpen(char *filename)
 
 void editorSave()
 {
-	if (E.filename == NULL) return;
+	if (E.filename == NULL) {
+		E.filename = editorPrompt("Save as: %s (ESC to cancel)");
+		if (E.filename == NULL) {
+			editorSetStatusMessage("Save Aborted");
+			return;
+		}
+	}
 
 	int len;
 	char *buf = editorRowsToString(&len);
@@ -496,6 +504,43 @@ void abFree(struct abuf *ab)
 }
 
 /*** input ***/
+
+char *editorPrompt(char *prompt)
+{
+	size_t bufsize = 128;
+	char *buf = malloc(bufsize);
+
+	size_t buflen = 0;
+	buf[0] = '\0';
+
+	LOG_INFO("Entering Prompt Loop...");
+	while (1) {
+		editorSetStatusMessage(prompt, buf);
+		editorRefreshScreen();
+
+		int c = editorReadKey();
+		if (c == DEL_KEY || c == CTRL_KEY('h') || c == BACKSPACE) {
+			if (buflen != 0) buf[--buflen] = '\0';
+		} else if (c == '\x1b') {
+			editorSetStatusMessage("");
+			LOG_INFO("Exiting Prompt Loop by ESC.");
+			return NULL;
+		} else if (c == '\r') {
+			if (buflen != 0) {
+				editorSetStatusMessage("");
+				LOG_INFO("Exiting Prompt Loop by ENTER.");
+				return buf;
+			}
+		} else if (!iscntrl(c) && c < 128) {
+			if (buflen == bufsize - 1) {
+				bufsize *= 2;
+				buf = realloc(buf, bufsize);
+			}
+			buf[buflen++] = c;
+			buf[buflen] = '\0';
+		}
+	}
+}
 
 void editorMoveCursor(int key)
 {
