@@ -39,12 +39,12 @@ void closeLogFile();
 
 /*** defines ***/
 
-#define KILO_VERSION "0.5.116"
+#define KILO_VERSION "0.5.119"
 #define LOG_FILE_PATH "/home/christian/kilo.log" /* TODO: make this Dynamic */
 #define MAX_MSG_LEN 512
 
 #define KILO_TAB_STOP 8
-#define KILO_DIRTY_QUIT_TIMES 3
+#define KILO_DIRTY_QUIT_TIMES 0
 
 #define LOG_INFO(...) logm("INFO", __func__, __LINE__, __VA_ARGS__)
 #define LOG_DEBUG(...) logm("DEBUG", __func__, __LINE__, __VA_ARGS__)
@@ -298,6 +298,33 @@ void editorAppendRow(char *s, size_t len)
 	E.dirty++;
 }
 
+void editorFreeRow(erow *row)
+{
+	free(row->chars);
+	free(row->render);
+}
+
+void editorDelRow(int at)
+{
+	if (at < 0 || at >= E.numrows) return;
+	LOG_DEBUG("Deleting row %d.", at);
+	editorFreeRow(&E.row[at]);
+	memmove(&E.row[at], &E.row[at + 1], sizeof(erow) * (E.numrows - at - 1));
+	E.numrows--;
+	E.dirty++;
+}
+
+void editorRowAppendString(erow *row, char *s, size_t len)
+{
+	LOG_DEBUG("Appending \"%s\" to \"%s\"", row->chars, s);
+	row->chars = realloc(row->chars, row->size + len + 1);
+	memcpy(&row->chars[row->size], s, len);
+	row->size += len;
+	row->chars[row->size] = '\0';
+	editorUpdateRow(row);
+	E.dirty++;
+}
+
 void editorRowInsertChar(erow *row, int at, int c)
 {
 	LOG_DEBUG("Inserting Character %c at position %d in row %d.", c, at, E.cy);
@@ -321,6 +348,7 @@ void editorRowDeleteChar(erow *row, int at)
 	E.dirty++;
 }
 
+
 /*** editor operations ***/
 
 void editorInsertChar(int c)
@@ -333,11 +361,20 @@ void editorInsertChar(int c)
 void editorDeleteChar()
 {
 	if (E.cy == E.numrows) return;
+	if (E.cx == 0 && E.cy == 0) return;
 
 	erow *row = &E.row[E.cy];
 	if (E.cx > 0) {
 		editorRowDeleteChar(row, E.cx - 1);
 		E.cx--;
+	} else if (E.cx == 0) {
+		E.cx = E.row[E.cy - 1].size;
+		LOG_DEBUG("Appending row %d string to row %d end.", E.cy, E.cy - 1);
+		editorRowAppendString(&E.row[E.cy - 1], row->chars, row->size);
+		editorDelRow(E.cy);
+		E.cy--;
+	} else {
+		LOG_ERROR("E.cx < 0: E.cx = %d", E.cx);
 	}
 }
 
