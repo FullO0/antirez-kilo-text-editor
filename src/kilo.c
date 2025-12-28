@@ -39,7 +39,7 @@ void closeLogFile();
 
 /*** defines ***/
 
-#define KILO_VERSION "0.5.119"
+#define KILO_VERSION "0.5.122"
 #define LOG_FILE_PATH "/home/christian/kilo.log" /* TODO: make this Dynamic */
 #define MAX_MSG_LEN 512
 
@@ -277,12 +277,13 @@ void editorUpdateRow(erow *row)
 	row->rsize = idx;
 }
 
-void editorAppendRow(char *s, size_t len)
+void editorInsertRow(int at, char *s, size_t len)
 {
-	E.row = realloc(E.row, sizeof(erow) * (E.numrows + 1));
+	if (at < 0 || at > E.numrows) return;
 
-	int at = E.numrows;
-	LOG_DEBUG("Read line %d from %s as string: \n %s.", at, E.filename, s);
+	E.row = realloc(E.row, sizeof(erow) * (E.numrows + 1));
+	memmove(&E.row[at + 1], &E.row[at], sizeof(erow) * (E.numrows - at));
+
 	E.row[at].size = len;
 	E.row[at].chars = malloc(len + 1);
 	memcpy(E.row[at].chars, s, len);
@@ -291,9 +292,6 @@ void editorAppendRow(char *s, size_t len)
 	E.row[at].rsize = 0;
 	E.row[at].render = NULL;
 	editorUpdateRow(&E.row[at]);
-	LOG_DEBUG("Rendered line %d from %s as string: \n %s with length %d.", 
-			  at, E.filename, E.row[at].render, E.row[at].rsize);
-
 	E.numrows++;
 	E.dirty++;
 }
@@ -353,9 +351,24 @@ void editorRowDeleteChar(erow *row, int at)
 
 void editorInsertChar(int c)
 {
-	if (E.cy == E.numrows) editorAppendRow("", 0);
+	if (E.cy == E.numrows) editorInsertRow(E.numrows, "", 0);
 	editorRowInsertChar(&E.row[E.cy], E.cx, c);
 	E.cx++;
+}
+
+void editorInsertNewline() {
+	if (E.cx == 0) {
+		editorInsertRow(E.cy, "", 0);
+	} else {
+		erow *row = &E.row[E.cy];
+		editorInsertRow(E.cy + 1, &row->chars[E.cx], row->size - E.cx);
+		row = &E.row[E.cy];
+		row->size = E.cx;
+		row->chars[row->size] = '\0';
+		editorUpdateRow(row);
+	}
+	E.cy++;
+	E.cx = 0;
 }
 
 void editorDeleteChar()
@@ -414,7 +427,8 @@ void editorOpen(char *filename)
 		while (linelen > 0 && (line[linelen - 1] == '\n' ||
 							   line[linelen - 1] == '\r'))
 			linelen--;
-		editorAppendRow(line, linelen);
+		LOG_DEBUG("length %d: %s\033[A", linelen, line);
+		editorInsertRow(E.numrows, line, linelen);
 	}
 	free(line);
 	LOG_INFO("Closing %s after reading from it", filename);
@@ -532,7 +546,7 @@ void editorProcessKeypress()
 
 	switch (c) {
 		case '\r':
-			/* TODO: */
+			editorInsertNewline();
 			break;
 
 		case CTRL_KEY('q'):
